@@ -1,0 +1,52 @@
+# 敏感文件（含 GitHub PAT，切勿提交）
+# ── 用户配置 / 状态（含 Token） ──
+config.json
+backup_state.json
+*.pem
+*.key
+*credentials*
+*secret*
+*.token
+
+# UI 状态（每台机器不同，里面是窗口位置信息）
+ui_state.json
+.github_backup_manager/
+
+# 日志
+logs/
+*.log
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 虚拟环境
+venv/
+.venv/
+env/
+.conda/
+
+# PyInstaller 构建产物
+build/
+dist/
+*.exe
+*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 调试临时文件
+_*.py
+*_audit*.py
+*_test_*.py
+*_debug*.py

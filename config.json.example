@@ -1,0 +1,37 @@
+{
+    "target": "",
+    "token": "",
+    "backup_dir": "",
+    "schedule_type": "daily",
+    "cron_expression": "0 2 * * *",
+    "retry_count": 3,
+    "retry_delay_base": 10,
+    "extra_repos": [],
+    "is_configured": false,
+
+    "_doc_clone_mode": "mirror 或 normal —— backup_engine.py 的注释详见",
+    "clone_mode": "mirror",
+
+    "_doc_daily_hour_minute": "daily / weekly / monthly / yearly 模式下共同的时间（0-23 / 0-59）",
+    "daily_hour": 2,
+    "daily_minute": 0,
+
+    "_doc_weekly_dow": "weekly 模式：mon|tue|wed|thu|fri|sat|sun",
+    "weekly_day_of_week": "sun",
+
+    "_doc_monthly_dom": "monthly 模式：几号（1-31），2/30 31 等不存在的日子 APScheduler 会顺延",
+    "monthly_day_of_month": 1,
+
+    "_doc_yearly": "yearly 模式：yearly 仅在 schedule_type=\"yearly\" 时生效，UI 1.1 起已取消该选项，但模型还兼容",
+    "yearly_month": 1,
+    "yearly_day_of_month": 1,
+
+    "_doc_suppress_git_warning": "git 缺失警告对话框里的『下次不再提醒』勾选后置 True",
+    "suppress_git_warning": false,
+
+    "_doc_scheduler_paused": "True 时调度器不启动，配置保留——菜单『设置 → 暂停调度器』可切",
+    "scheduler_paused": false,
+
+    "_doc_sort_option": "仓库列表排序：名称 / 最后备份 / 状态 / 大小 / 来源",
+    "sort_option": "名称"
+}
