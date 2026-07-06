@@ -10,6 +10,16 @@
 APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览器；Windows / macOS / Linux
 三平台开箱即用。
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="GitHub Backup Manager 仪表盘" width="900">
+</p>
+
+<p align="center">
+  <em>仪表盘 —— 一眼看全仓库总数 / 备份成功失败 / 磁盘可用 / 备份目标 / 实时日志</em>
+</p>
+
+更多截图（仓库列表 / 备份日志 / 系统配置）见 [`docs/screenshots/`](./docs/screenshots)。
+
 ---
 
 ## ✨ 特性
