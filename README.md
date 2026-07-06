@@ -10,6 +10,23 @@
 APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览器；Windows / macOS / Linux
 三平台开箱即用。
 
+> ⚠️ **前置依赖：必须先安装 Git 才能使用本软件**
+>
+> 本工具本质上是 Git 备份命令的图形界面 —— 所有 `clone / fetch / fsck / pull` 都依赖系统里的 `git` 命令。
+> 没装 Git 就启动会弹出警告对话框，且**实际备份功能无法运行**。
+>
+> 安装方法：
+>
+> | 平台 | 安装命令 / 链接 |
+> | :--- | :--- |
+> | Windows | https://git-scm.com/download/win （下载安装包一路 Next 即可） |
+> | macOS | `brew install git` 或安装 Xcode Command Line Tools：`xcode-select --install` |
+> | Linux (Debian / Ubuntu) | `sudo apt update && sudo apt install git` |
+> | Linux (Fedora / RHEL) | `sudo dnf install git` |
+> | Linux (Arch) | `sudo pacman -S git` |
+>
+> 装好后启动软件，**窗口右上角**会显示 `✓ git version x.y.z` 验证是否识别成功；显示 `⚠ 未检测到 git` 则功能受限。
+
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="GitHub Backup Manager 仪表盘" width="900">
 </p>
@@ -110,8 +127,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-> 需要 Python 3.10+。
-> Windows 用户如果没有 `git` 也不慌，工具会提示安装位置。
+> **需要 Python 3.10+，并先安装好 Git**（详见上方 ⚠️ 前置依赖）。
 
 ### Windows 单文件版
 
@@ -207,6 +223,7 @@ pyinstaller --onefile --windowed --name GitHubBackupManager \
 | 症状 | 检查 |
 | :--- | :--- |
 | 启动闪退 | `python diagnose.py` 看依赖 |
+| 右上角显示 `⚠ 未检测到 git` | 系统未安装 Git 或 PATH 没包含 git，按上文安装 |
 | Token 失败 | Token 是否有 `repo` 权限；目标用户是否设置了 Token 可见性 |
 | 备份卡住 | `git fetch --prune` 网络问题；日志会显示具体仓库 |
 | 调度器不跑 | 设置 → 暂停调度器 是否被勾选 |
