@@ -1073,11 +1073,16 @@ def run_full_backup(
         # 取消时不更新 last_full_backup（不算一次完整备份）
         state["last_full_backup"] = datetime.datetime.now().isoformat()
 
+    # 失败数 0 → 绿色（成功），失败数 > 0 → 红色（错误）。
+    # 否则走 _infer_level 启发式会被消息里的"失败"二字误判为 ERROR，
+    # 出现"失败=0 仍标红"的问题。
+    final_level = logging.ERROR if fail_count > 0 else LOG_SUCCESS
     if cancelled:
         add_log(f"========== 备份已取消：完成 {success_count}，失败 {fail_count} ==========",
-                logging.WARNING)
+                final_level)
     else:
-        add_log(f"========== 备份完成：成功 {success_count}，失败 {fail_count} ==========")
+        add_log(f"========== 备份完成：成功 {success_count}，失败 {fail_count} ==========",
+                final_level)
     save_state(state)
 
     if progress_callback:
