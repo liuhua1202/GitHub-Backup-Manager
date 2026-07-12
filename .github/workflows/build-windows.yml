@@ -33,6 +33,7 @@ jobs:
       - name: PyInstaller
         run: |
           pyinstaller --onefile --windowed --name GitHubBackupManager `
+                      --icon "logo.ico" `
                       --add-data "logo.ico;." `
                       app.py
 

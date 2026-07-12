@@ -111,7 +111,7 @@ APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览
 ### v1.2.0 SHA256
 
 ```
-3f2a02581838535c84c502c338990f65d2d3ccfe80d6e9c6ad91495065989c97  GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip
+1f504d2cc2c2b47abeb47d916edbd7d9013e37f7ac8ca93796d7441d1278442d  GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip
 ```
 
 ---
@@ -200,6 +200,7 @@ python app.py
 ```bash
 pip install pyinstaller
 pyinstaller --onefile --windowed --name GitHubBackupManager \
+            --icon "logo.ico" \
             --add-data "logo.ico;." app.py
 ```
 
