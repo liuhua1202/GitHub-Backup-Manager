@@ -9,7 +9,7 @@ GitHub Backup Manager - 桌面应用版
 
 from __future__ import annotations
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 __author__ = "liuhua"
 __license__ = "MIT"
 
@@ -1366,13 +1366,27 @@ class BackupApp(ttkb.Window):
         self.config_data: dict[str, Any] = load_config()
         self.state_data: dict[str, Any] = load_state()
         self.msg_queue: queue.Queue[tuple[str, Any]] = queue.Queue()
-        self.git_ok, self.git_version = check_git()
+        # 异步任务结果队列（git 检测 / get_dir_size 等后台 thread 通知主线程刷新 UI 用）
+        # —— Tk 的 after() 不是 thread-safe，子线程直接 self.after() 调度的事件主线程 update() 看不到。
+        # queue.Queue 是 thread-safe 的，子线程 put + 主线程 get_nowait 是正确范式。
+        self._async_results: queue.Queue[tuple] = queue.Queue()
 
-        # git 未安装 → 启动时弹窗提示（含"访问 Git 官网"按钮一键跳转）。
-        # 若用户在对话框里勾选了"下次不再提醒"，config 里 suppress_git_warning=True，不再弹。
-        # 延迟到主窗口 build 完再弹，等几拍保证 mainloop 已激活。
-        if not self.git_ok and not self.config_data.get("suppress_git_warning", False):
-            self.after(300, self._show_git_missing_dialog)
+        # git 检测：原同步 subprocess.run 要 ~149ms 阻塞启动。
+        # 改成后台 thread 跑，结果回来在主线程统一处理（更新 header / 弹窗）。
+        # 占位值让 header 立即可见"检测中…"，避免空白等待。
+        # 注：Tk 的 after() 不是 thread-safe，子线程直接调 main thread 的 update() 看不到，
+        # 所以走 self._async_results queue + 主线程 _drain_async 轮询。
+        self.git_ok: bool = False
+        self.git_version: str = "检测中…"
+
+        def _bg_check_git() -> None:
+            ok, ver = check_git()
+            # queue.Queue 是 thread-safe 的，子线程 put 主线程 get_nowait 安全
+            self._async_results.put(("git_check", ok, ver))
+        threading.Thread(target=_bg_check_git, daemon=True).start()
+
+        # git 未安装弹窗：移到 _on_git_checked 里，等检测完再决定弹不弹
+        # （保留 suppress_git_warning 检查逻辑不变）
 
         # 首次配置检查
         if not self.config_data.get("is_configured", False):
@@ -1390,6 +1404,10 @@ class BackupApp(ttkb.Window):
 
         # 启动队列轮询
         self._poll_queue()
+
+        # 异步任务结果轮询（git 检测 / get_dir_size 等后台 thread → 主线程 UI 刷新）
+        # 50ms tick —— 启动期感知不到延迟，后台任务一般 100-300ms 完成
+        self.after(50, self._drain_async_results)
 
         # ── Tk 全局回调异常钩子 ─────────────────────────────────
         # 默认 Tk 默默吞掉 command 回调里的所有异常，调试黑洞。
@@ -2244,6 +2262,18 @@ class BackupApp(ttkb.Window):
     def _show_git_missing_dialog(self) -> None:
         """git 未安装时启动时弹窗。模态，挡住主窗口直到用户关闭。"""
         GitMissingDialog(self, git_diag_msg=self.git_version or "git 命令未在 PATH 中找到")
+
+    def _on_git_checked(self, ok: bool, ver: str) -> None:
+        """后台 git 检测完成回调（主线程）。
+
+        1) 更新 self.git_ok / git_version（所有后续依赖此状态的代码拿到真值）
+        2) 刷新 header 徽章
+        3) 若未安装且未 suppress，schedule 弹窗（沿用原 300ms 延迟，
+           等 build_ui 跑完、mainloop 激活再弹）
+        """
+        self._refresh_git_status(ok, ver)
+        if not ok and not self.config_data.get("suppress_git_warning", False):
+            self.after(300, self._show_git_missing_dialog)
 
     def _refresh_git_status(self, ok: bool, ver: str) -> None:
         """git 状态变了之后被对话框"重试检测"回调。
@@ -3172,6 +3202,32 @@ class BackupApp(ttkb.Window):
         else:
             self.after(1000, self._poll_queue)
 
+    def _drain_async_results(self) -> None:
+        """轮询 self._async_results（后台 thread 写、主线程读）。
+
+        为什么不用子线程直接 self.after(0, ...)：Tk 的 after() 不是 thread-safe，
+        子线程 schedule 的事件主线程 update() 看不到。queue.Queue 是 thread-safe 的，
+        所以走 put + 主线程 get_nowait 的范式。50ms tick 启动期感知不到延迟，
+        后台任务一般 100-300ms 完成。
+        """
+        try:
+            while True:
+                # 队列里塞 (kind, *args) —— 比如 ("git_check", ok, ver)
+                # 但 get_nowait 返回单值，要按 kind 长度灵活解包
+                item = self._async_results.get_nowait()
+                kind = item[0]
+                if kind == "git_check":
+                    _, ok, ver = item
+                    self._on_git_checked(ok, ver)
+                elif kind == "dir_size":
+                    _, size_str = item
+                    self.lbl_total_size.configure(text=size_str)
+        except queue.Empty:
+            pass
+        # 持续 poll —— 即使现在没结果也不停（防止后续有任务）
+        # 用 1s 间隔即可，UI 更新不敏感
+        self.after(1000, self._drain_async_results)
+
     def _update_dash_log(self) -> None:
         items = log_buffer.get_all_with_levels()[-200:]
         tw = _get_text_widget(self.dash_log)
@@ -3228,7 +3284,19 @@ class BackupApp(ttkb.Window):
                 self.lbl_last_backup.configure(text=time_str)
         else:
             self.lbl_last_backup.configure(text="从未")
-        self.lbl_total_size.configure(text=get_dir_size(backup_dir) if backup_dir.exists() else "N/A")
+
+        # 备份总大小：原同步 get_dir_size 在大仓库时阻塞 100ms+。
+        # 改成后台 thread 算，主线程先显示"计算中…"，算完通过 queue 通知主线程刷新标签。
+        if not backup_dir.exists():
+            self.lbl_total_size.configure(text="N/A")
+        else:
+            self.lbl_total_size.configure(text="计算中…")
+
+            def _bg_dir_size() -> None:
+                size_str = get_dir_size(backup_dir)
+                self._async_results.put(("dir_size", size_str))
+            threading.Thread(target=_bg_dir_size, daemon=True).start()
+
         self.lbl_target.configure(text=self.config_data.get("target") or "未设置")
 
         # 指定额外仓库数

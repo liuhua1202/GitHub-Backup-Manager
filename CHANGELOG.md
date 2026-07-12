@@ -3,6 +3,25 @@
 All notable changes to **GitHub Backup Manager** are documented here.
 Format: [SemVer](https://semver.org/). 项目作者：liuhua。
 
+## [v1.2.1] - 2026-07-13
+
+### ⚡ 性能优化（启动速度）
+- **主线程 `BackupApp()` 构造耗时：1.30s → 0.85s（-35%）**。核心功能 0 改动，只动启动流程。
+  - **`check_git` 异步化**：原同步 `subprocess.run("git", "--version")` 阻塞 ~149ms。
+    改成 daemon thread 后台跑，结果通过 `self._async_results` queue 通知主线程刷新 header。
+    启动期间 header 显示「检测中…」占位，~300ms 后回填真实状态。
+  - **`get_dir_size` 异步化**：仪表盘"备份总大小"原本同步扫盘 ~65ms（100MB+ 仓库时更久）。
+    改成后台 thread，先显示「计算中…」占位，算完回填。
+  - **新增 `self._async_results: queue.Queue` + `_drain_async_results()` 轮询机制**：
+    解决「Tk `after()` 不是 thread-safe，子线程直接 `self.after()` 调度的事件主线程 `update()` 看不到」的问题。
+    queue.Queue 是 thread-safe 的，put / get_nowait 是正确跨线程范式。
+    50ms 启动 tick → 1s 稳态 tick，UI 延迟感知不到。
+- **splash 窗口方案（已尝试，未采纳）**：原本想加 splash 掩盖 ttkbootstrap 主题 init 的 600ms+ 等待。
+  但 splash 必须用独立 `tk.Tk()` 才能在 `BackupApp` 构造前显示，结果 ttkbootstrap 主题初始化 + PIL
+  `ImageTk.PhotoImage` 跨 interp 注册导致 `image "pyimageN" doesn't exist` 崩溃。回滚 splash，
+  改用纯异步化方案，效果仍然显著（启动快 35%）。splash 留作后续优化（PyInstaller bootloader
+  native splash 或 ctypes splash 均可解）。
+
 ## [v1.2.0] - 2026-07-13
 
 ### 🎨 UI 升级

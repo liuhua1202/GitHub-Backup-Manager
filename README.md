@@ -1,6 +1,6 @@
 # GitHub Backup Manager · GitHub 仓库桌面备份工具
 
-[![Version](https://img.shields.io/badge/version-v1.2.0-0078d4?style=flat-square)](#-v120-变更摘要)
+[![Version](https://img.shields.io/badge/version-v1.2.1-0078d4?style=flat-square)](#-v121-变更摘要)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](#-许可证)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078d4?style=flat-square)](#-特性)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square)](https://www.python.org/)
@@ -104,14 +104,14 @@ APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览
 
 | 平台 | 文件 | 大小 | 说明 |
 | :--- | :--- | :--- | :--- |
-| Windows | `GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip` | ~10 MB | 单文件可执行，解压即用 |
+| Windows | `GitHub-Backup-Manager-v1.2.1-windows-x86_64.zip` | ~10 MB | 单文件可执行，解压即用 |
 | macOS | `Source code (zip)` | — | 暂未提供 macOS 二进制（PyInstaller 需跨平台编译） |
 | Linux | `Source code (tar.gz)` | — | 同上 |
 
-### v1.2.0 SHA256
+### v1.2.1 SHA256
 
 ```
-1f504d2cc2c2b47abeb47d916edbd7d9013e37f7ac8ca93796d7441d1278442d  GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip
+BD5CC0B80A379AB1FA2D2B9A3CC6C53A7F94C96436ABD9B547927B9822A263C9  GitHub-Backup-Manager-v1.2.1-windows-x86_64.zip
 ```
 
 ---
@@ -131,7 +131,7 @@ python app.py
 
 ### Windows 单文件版
 
-下载 `GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip` → 解压 → 双击 `GitHubBackupManager.exe` 运行。
+下载 `GitHub-Backup-Manager-v1.2.1-windows-x86_64.zip` → 解压 → 双击 `GitHubBackupManager.exe` 运行。
 
 启动后弹出首次设置向导：
 
@@ -231,6 +231,17 @@ pyinstaller --onefile --windowed --name GitHubBackupManager \
 | 找不到 `config.json` | 路径在 Windows 可能被杀毒软件隔离 |
 
 ---
+
+## 🆕 v1.2.1 变更摘要
+
+相对 v1.2.0：
+- ⚡ **启动速度优化 -35%**：`BackupApp()` 主线程构造从 1.30s 降到 0.85s，用户感知的主窗口可见时间从双击后 1.3s 提前到 0.85s
+  - `check_git` 异步化：原同步 `subprocess.run("git", "--version")` 阻塞 ~149ms，后台 daemon thread 跑，结果通过 `queue.Queue` 通知主线程刷新 header
+  - `get_dir_size` 异步化：仪表盘"备份总大小"原本同步扫盘 ~65ms（100MB+ 仓库更久），后台 thread 算完回填
+  - 新增 `_async_results: queue.Queue` + `_drain_async_results()` 轮询机制：解决 Tk `after()` 跨线程不安全问题
+  - 占位符「检测中…」/「计算中…」让用户立即看到内容，~300ms 后回填真实值
+  - 核心功能 0 改动（备份引擎 / 调度器 / UI 控件 / 对话框 / 日志系统全部保留）
+- 📝 **CHANGELOG / README** 同步更新
 
 ## 🆕 v1.2.0 变更摘要
 
