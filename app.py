@@ -9,7 +9,7 @@ GitHub Backup Manager - 桌面应用版
 
 from __future__ import annotations
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "liuhua"
 __license__ = "MIT"
 
@@ -23,6 +23,7 @@ import datetime
 import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinter.constants import PIESLICE  # Canvas 圆角辅助用
 from pathlib import Path
 from typing import Any
 
@@ -320,9 +321,15 @@ class Palette:
     WARNING  = "#f59e0b"   # 警告（橙）
     INFO     = "#0891b2"   # 信息（青）
 
+    # 语义色 — 浅底（Tailwind 100，仪表盘卡背景用）
+    PRIMARY_LIGHT = "#dbeafe"  # blue-100
+    SUCCESS_LIGHT = "#dcfce7"  # green-100
+    DANGER_LIGHT  = "#fee2e2"  # red-100
+    INFO_LIGHT    = "#cffafe"  # cyan-100
+
     # 边框
-    BORDER      = "#e2e8f0"
-    BORDER_LIGHT = "#f1f5f9"
+    BORDER      = "#cbd5e1"   # slate-300：仪表盘卡片描边
+    BORDER_LIGHT = "#e2e8f0"  # 浅一档，给 Treeview 等细线用
 
     # Treeview 状态色
     TV_SUCCESS = "#16a34a"
@@ -1307,25 +1314,8 @@ class BackupApp(ttkb.Window):
                   background=[("selected", Palette.PRIMARY)],
                   foreground=[("selected", "#ffffff")])
 
-        # ── 指标卡片：浅色大色块 ──
-        for name, bg, fg in [
-            ("Primary", "#dbeafe", Palette.PRIMARY),
-            ("Success", "#dcfce7", Palette.SUCCESS),
-            ("Danger", "#fee2e2", Palette.DANGER),
-            ("Info", "#cffafe", Palette.INFO),
-        ]:
-            style.configure(f"MetricCard{name}.TFrame", background=bg)
-            # 标题：深色文本 + 更大的字号，在浅色背景上对比度强，避免 accent 色
-            # 在 pastel 上"发飘"看不清
-            style.configure(f"MetricTitle{name}.TLabel",
-                            background=bg, foreground=Palette.TEXT_PRIMARY,
-                            font=("Segoe UI", 14, "bold"))
-            # 主数值：保持 accent 色，主视觉冲击
-            style.configure(f"MetricValue{name}.TLabel",
-                            background=bg, foreground=fg,
-                            font=("Segoe UI", 26, "bold"))
-
         # ── 信息卡片：白色背景 + 细边框 ──
+        # 注：指标卡片（_metric_card）改用 Canvas 自绘，不再依赖 ttk 样式
         style.configure("InfoCard.TFrame", background=Palette.BG_CARD, relief="solid",
                         borderwidth=1, bordercolor=Palette.BORDER)
         style.configure("InfoCardTitle.TLabel",
@@ -1640,24 +1630,130 @@ class BackupApp(ttkb.Window):
             return "log_success"
         return ""
 
-    def _metric_card(self, parent, title, value, style, col) -> ttkb.Label:
-        """创建摘要指标卡片：浅色大色块风格。"""
-        if style == SUCCESS:
-            name = "Success"
-        elif style == DANGER:
-            name = "Danger"
-        elif style == INFO:
-            name = "Info"
-        else:
-            name = "Primary"
+    def _metric_card(self, parent, title, value, style, col):
+        """创建摘要指标卡片：Metro 磁贴风 —— 浅 accent 圆角底 + 10px 顶部 accent 描边。
 
-        card = ttkb.Frame(parent, padding=15, style=f"MetricCard{name}.TFrame")
-        card.grid(row=0, column=col, padx=5, sticky=NSEW)
+        设计：参考 subnet-calculator 的 .tile 风格 + 自身浅色系配色方案
+            - 顶部 10px accent 描边（粗，强调语义，圆角）
+            - 卡片底色 = accent 浅色（Tailwind 100），四边 6px 圆角
+            - 数值大号，字色 = accent（与顶部描边联动，强语义）
+            - 标题小号次要文字色
+
+        实现：Canvas 像素级自绘（绕开 ttkbootstrap Canvas bg 覆盖问题）。
+        圆角通过 4 个 create_arc PIESLICE + 中心矩形组合。
+        z 顺序：bg < stripe < text —— 用 tag 标记保证 resize 重绘后顺序不乱。
+        """
+        # style(ttkbootstrap 常量) → (style 名称, accent 颜色, accent 浅色)
+        if style == SUCCESS:
+            name, accent, accent_light = "Success", Palette.SUCCESS, Palette.SUCCESS_LIGHT
+        elif style == DANGER:
+            name, accent, accent_light = "Danger", Palette.DANGER, Palette.DANGER_LIGHT
+        elif style == INFO:
+            name, accent, accent_light = "Info", Palette.INFO, Palette.INFO_LIGHT
+        else:
+            name, accent, accent_light = "Primary", Palette.PRIMARY, Palette.PRIMARY_LIGHT
+
+        RADIUS = 6     # 圆角半径
+        STRIPE_H = 10  # 顶部 accent 描边高度
+        CARD_H = 80    # 卡片总高
+
+        # Canvas 卡框：固定高度，圆角自绘
+        card = tk.Canvas(parent, highlightthickness=0, bd=0, height=CARD_H)
+        card.grid(row=0, column=col, padx=10, sticky=NSEW)
         parent.grid_columnconfigure(col, weight=1)
-        ttkb.Label(card, text=title, style=f"MetricTitle{name}.TLabel").pack(anchor=W)
-        val_label = ttkb.Label(card, text=value, style=f"MetricValue{name}.TLabel")
-        val_label.pack(anchor=W)
-        return val_label
+        parent.grid_rowconfigure(0, minsize=CARD_H)
+        card.grid_propagate(False)
+
+        # ── 圆角矩形辅助：4 个角的 PIESLICE + 中心矩形 ──
+        def _rounded_rect_all(x1, y1, x2, y2, r, **kw):
+            """四边都圆角的矩形，返回 item id 列表"""
+            r = max(0, min(r, (x2 - x1) / 2, (y2 - y1) / 2))
+            if r <= 0:
+                return [card.create_rectangle(x1, y1, x2, y2, **kw)]
+            ids = [
+                card.create_arc(x1, y1, x1 + 2*r, y1 + 2*r,
+                                start=90, extent=90, style=PIESLICE, **kw),
+                card.create_arc(x2 - 2*r, y1, x2, y1 + 2*r,
+                                start=0, extent=90, style=PIESLICE, **kw),
+                card.create_arc(x1, y2 - 2*r, x1 + 2*r, y2,
+                                start=180, extent=90, style=PIESLICE, **kw),
+                card.create_arc(x2 - 2*r, y2 - 2*r, x2, y2,
+                                start=270, extent=90, style=PIESLICE, **kw),
+                card.create_rectangle(x1 + r, y1, x2 - r, y2, **kw),
+                card.create_rectangle(x1, y1 + r, x2, y2 - r, **kw),
+                card.create_rectangle(x1 + r, y1 + r, x2 - r, y2 - r, **kw),
+            ]
+            return ids
+
+        def _rounded_top_rect(x1, y1, x2, y2, r, **kw):
+            """仅顶部圆角的矩形（底部直角），返回 item id 列表"""
+            r = max(0, min(r, (x2 - x1) / 2, (y2 - y1) / 2))
+            if r <= 0:
+                return [card.create_rectangle(x1, y1, x2, y2, **kw)]
+            ids = [
+                card.create_arc(x1, y1, x1 + 2*r, y1 + 2*r,
+                                start=90, extent=90, style=PIESLICE, **kw),
+                card.create_arc(x2 - 2*r, y1, x2, y1 + 2*r,
+                                start=0, extent=90, style=PIESLICE, **kw),
+                card.create_rectangle(x1, y1, x2, y2, **kw),
+            ]
+            return ids
+
+        # ── 绘制：bg + stripe + text，全部用 tag 标记方便 z 排序 ──
+        _bg_items = _rounded_rect_all(0, 0, 100, CARD_H, RADIUS,
+                                       fill=accent_light, outline="",
+                                       tags=("bg",))
+        _stripe_items = _rounded_top_rect(0, 0, 100, STRIPE_H, RADIUS,
+                                           fill=accent, outline="",
+                                           tags=("stripe",))
+        _title_id = card.create_text(18, 24, text=title, anchor=NW,
+                                      fill=Palette.TEXT_SECONDARY,
+                                      font=("Segoe UI", 10, "bold"),
+                                      tags=("text",))
+        _value_id = card.create_text(18, 44, text=value, anchor=NW,
+                                      fill=accent,
+                                      font=("Segoe UI", 22, "bold"),
+                                      tags=("text",))
+        # 显式建立 z 顺序：bg < stripe < text
+        card.tag_raise("stripe", "bg")
+        card.tag_raise("text", "stripe")
+
+        # ── resize：删除旧圆角 item，重绘后用 tag 重建 z 顺序 ──
+        def _on_resize(event):
+            for item in _bg_items + _stripe_items:
+                card.delete(item)
+            new_bg = _rounded_rect_all(0, 0, event.width, CARD_H, RADIUS,
+                                        fill=accent_light, outline="",
+                                        tags=("bg",))
+            new_stripe = _rounded_top_rect(0, 0, event.width, STRIPE_H, RADIUS,
+                                            fill=accent, outline="",
+                                            tags=("stripe",))
+            _bg_items.clear()
+            _bg_items.extend(new_bg)
+            _stripe_items.clear()
+            _stripe_items.extend(new_stripe)
+            # 关键：resize 后新 bg/stripe 在 text 之后创建，会盖住 text，
+            # 必须重新建立 z 顺序
+            card.tag_raise("stripe", "bg")
+            card.tag_raise("text", "stripe")
+        card.bind("<Configure>", _on_resize)
+
+        # ── 句柄：模拟 ttkb.Label 接口，val.configure(text=...) 走 itemconfigure ──
+        class _Handle:
+            def __init__(self, initial):
+                self._text = initial
+            def configure(self, cnf=None, **kwargs):
+                if "text" in kwargs:
+                    self._text = kwargs["text"]
+                    card.itemconfigure(_value_id, text=self._text)
+                # 其他 configure 项（state、font 等）静默忽略
+            config = configure
+            def cget(self, key):
+                if key == "text":
+                    return self._text
+                return None
+
+        return _Handle(value)
 
     def _info_card(self, parent, title, value, col) -> ttkb.Label:
         """信息卡片：白色背景 + 标题 + 数值。"""

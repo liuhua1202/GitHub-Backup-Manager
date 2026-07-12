@@ -1,6 +1,6 @@
 # GitHub Backup Manager · GitHub 仓库桌面备份工具
 
-[![Version](https://img.shields.io/badge/version-v1.1.0-0078d4?style=flat-square)](#-v110-变更摘要)
+[![Version](https://img.shields.io/badge/version-v1.2.0-0078d4?style=flat-square)](#-v120-变更摘要)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](#-许可证)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078d4?style=flat-square)](#-特性)
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square)](https://www.python.org/)
@@ -30,7 +30,7 @@ APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览
 <p align="center">
   <img src="docs/screenshots/dashboard.png" alt="GitHub Backup Manager 仪表盘" width="900">
 </p>
-<p align="center"><em>仪表盘 —— 仓库总数 / 备份成功失败 / 磁盘可用 / 备份目标 / 实时日志</em></p>
+<p align="center"><em>仪表盘 —— Metro 磁贴风指标卡片（顶部 10px accent 描边 + 浅 accent 圆角底）+ 仓库总数 / 备份成功失败 / 磁盘可用 / 备份目标 / 实时日志</em></p>
 
 <p align="center">
   <img src="docs/screenshots/repo-list.png" alt="GitHub Backup Manager 仓库列表" width="900">
@@ -104,11 +104,11 @@ APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览
 
 | 平台 | 文件 | 大小 | 说明 |
 | :--- | :--- | :--- | :--- |
-| Windows | `GitHub-Backup-Manager-v1.1.0-windows-x86_64.zip` | ~10 MB | 单文件可执行，解压即用 |
+| Windows | `GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip` | ~10 MB | 单文件可执行，解压即用 |
 | macOS | `Source code (zip)` | — | 暂未提供 macOS 二进制（PyInstaller 需跨平台编译） |
 | Linux | `Source code (tar.gz)` | — | 同上 |
 
-### v1.1.0 SHA256
+### v1.2.0 SHA256
 
 ```
 （release 创建后由 GitHub Action 自动生成并展示）
@@ -131,7 +131,7 @@ python app.py
 
 ### Windows 单文件版
 
-下载 `GitHub-Backup-Manager-v1.1.0-windows-x86_64.zip` → 解压 → 双击 `GitHubBackupManager.exe` 运行。
+下载 `GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip` → 解压 → 双击 `GitHubBackupManager.exe` 运行。
 
 启动后弹出首次设置向导：
 
@@ -230,6 +230,21 @@ pyinstaller --onefile --windowed --name GitHubBackupManager \
 | 找不到 `config.json` | 路径在 Windows 可能被杀毒软件隔离 |
 
 ---
+
+## 🆕 v1.2.0 变更摘要
+
+相对 v1.1.0：
+- 🎨 **仪表盘指标卡片重做**（Metro 磁贴风）
+  - 顶部 10px accent 描边（粗，凸显卡片语义）
+  - 卡片底色 = accent 浅色版（Tailwind 100）
+  - 4 边 6px 圆角
+  - 数值字色 = accent 色（与顶部联动）
+  - 卡片间距 padx 10
+- 🛠 **`_metric_card` 重写为 Canvas 像素级自绘**：绕开 ttkbootstrap Canvas bg 覆盖问题，4 个 PIESLICE + 中心矩形组合实现圆角
+- 🐛 **修窗口 resize 后仪表盘文字消失**：resize handler 重画时用 `tag_raise` 重建 z 顺序
+- 🐛 **修「失败 = 0」误标红**：`final_level` 显式按 `fail_count > 0` 决定
+- 🐛 **修 Windows 高 DPI 下 1px 边框不可见**：用 ttk `relief="solid", borderwidth=2`
+- 📝 **CHANGELOG / README** 同步更新
 
 ## 🆕 v1.1.0 变更摘要
 

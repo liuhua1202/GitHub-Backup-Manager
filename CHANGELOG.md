@@ -3,6 +3,34 @@
 All notable changes to **GitHub Backup Manager** are documented here.
 Format: [SemVer](https://semver.org/). 项目作者：liuhua。
 
+## [v1.2.0] - 2026-07-13
+
+### 🎨 UI 升级
+- **仪表盘指标卡片重做**（Metro 磁贴风，参考 subnet-calculator `.tile` 风格）
+  - **顶部 10px accent 描边**：粗条带，凸显卡片语义（蓝/绿/红/青）
+  - **卡片底色 = accent 浅色版**（Tailwind 100 调色板）：dbeafe / dcfce7 / fee2e2 / cffafe
+  - **4 边 6px 圆角**：Canvas 像素级自绘（4 个 PIESLICE + 中心矩形组合）
+  - **数值字色 = accent 色**：与顶部描边联动，强语义化
+  - **卡片间距 padx 10**：更通透
+- **Palette 调色板扩展**：新增 `PRIMARY_LIGHT` / `SUCCESS_LIGHT` / `DANGER_LIGHT` / `INFO_LIGHT` 4 个浅色常量
+- **BORDER 加深**：从 `#e2e8f0` (slate-200) 改为 `#cbd5e1` (slate-300)，高 DPI 缩放下也清晰
+
+### 🐛 修复
+- **备份完成日志「失败 = 0」不再误标红**：之前用 `_infer_level` 启发式看到"失败"字眼就 ERROR，现在显式按 `fail_count > 0` 决定 level
+- **修复窗口 resize 后仪表盘文字消失**：Canvas 自绘的圆角 bg/stripe 在 resize handler 重画后会盖住 text 元素 —— 改用 `tag_raise("text", "stripe")` 显式重建 z 顺序
+- **修复 Windows 高 DPI 缩放下 1px 边框不可见**：边框用 `ttk.Frame` 的 `relief="solid", borderwidth=2, bordercolor=BORDER`，比 bg-trick 稳
+
+### 🛠 重构
+- **`_metric_card` 重写为 Canvas 像素级自绘**：原来用 `tk.Frame` + pack/grid 各种踩坑（ttk padding 吃 pack 间隙 / grid propagate 缩掉 stripe / ttkbootstrap Canvas bg 被覆盖），最终方案：Canvas 内部画圆角矩形 + 顶条 + 文字
+- **轻量 `_Handle` 类 mock Label 接口**：`val.configure(text=...)` 自动同步 Canvas 文字，调用方无感
+- **删除死代码**：`MetricCard*.TFrame` 样式已无人使用（v1.2.0 改 Canvas 自绘）
+
+### 📝 文档
+- **README.md** 更新版本号到 v1.2.0 + 替换仪表盘截图
+- **CHANGELOG.md** 加 v1.2.0 段
+
+---
+
 ## [v1.1.0] - 2026-07-06
 
 ### 🎨 新增 / 优化
