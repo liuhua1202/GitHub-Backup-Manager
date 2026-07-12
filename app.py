@@ -311,16 +311,18 @@ def apply_icon(window) -> None:
             print(f"[apply_icon] win32 强制失败: {e}", file=sys.stderr)
 
         # Tk 在 Toplevel 首次 paint 后会用 SetClassLongPtr 把 class icon
-        # 改回 Tk 默认（这是 Tk 维护 class 资源生命周期的副作用）——
-        # 用 after() 链持续重设 5 秒，确保 WNDCLASSEX 最终锁定到 octocat。
-        # 失败静默：标题栏/任务栏分组模式已显示 octocat，不会更糟。
+        # 改回 Tk 默认（每次新 Toplevel 创建都会发生）—— 用 after() 链
+        # 持续重设 60 秒，确保 WNDCLASSEX 最终锁定到 octocat。
+        # 实测：7 次（5 秒）的 retry 会被 Tk 在第 6 秒改回去，需要 ≥60s 覆盖
+        # 任何 Toplevel 创建时机。
         def _retry():
             try:
                 _apply_icon_win32(window, str(logo_ico))
             except Exception:
                 pass
         try:
-            for ms in (50, 150, 300, 600, 1200, 2500, 5000):
+            # 60 秒内 12 次重试，覆盖 Tk 的所有 class icon 重设时机
+            for ms in (50, 150, 300, 600, 1200, 2500, 5000, 10000, 20000, 35000, 50000, 60000):
                 window.after(ms, _retry)
         except Exception:
             pass
@@ -349,8 +351,29 @@ def _apply_icon_win32(window, ico_path: str) -> None:
     GCLP_HICONSM = -34
 
     try:
-        hwnd = wintypes.HWND(window.winfo_id())
+        # 关键：`winfo_id()` 返回的是 Tk 内部子窗口的 HWND（class=TkChild），
+        # 对它调 SetClassLongPtr 会 ERROR_INVALID_HANDLE。要拿真正的
+        # top-level frame HWND（class=TkTopLevel）必须用 wm frame。
+        # Tk 9.x 之前 wm frame 返回十进制字符串；9.x+ 加了 0x 前缀。
+        try:
+            frame_id = window.tk.call("wm", "frame", window._w)
+        except Exception:
+            frame_id = window.winfo_id()
+        s = str(frame_id).strip()
+        if s.startswith(("0x", "0X")):
+            hwnd_int = int(s, 16)
+        else:
+            hwnd_int = int(s)
+        hwnd = wintypes.HWND(hwnd_int)
     except Exception:
+        return
+
+    # 验证 class 是 TkTopLevel（不是 TkChild 之类），不是的话直接返回
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, ctypes.c_int]
+    user32.GetClassNameW.restype = ctypes.c_int
+    class_name = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(hwnd, class_name, 256)
+    if class_name.value != "TkTopLevel":
         return
 
     # ── 配 ctypes 签名（64-bit 上不配会 crash 在 stdcall 栈错位） ──
@@ -385,9 +408,15 @@ def _apply_icon_win32(window, ico_path: str) -> None:
 
     # ── 改写 WNDCLASSEX，让任务栏主图标也跟上 ──
     if hicon_big:
-        SetClassLongPtrW(hwnd, GCLP_HICON, hicon_big)
+        try:
+            SetClassLongPtrW(hwnd, GCLP_HICON, hicon_big)
+        except Exception:
+            pass
     if hicon_small:
-        SetClassLongPtrW(hwnd, GCLP_HICONSM, hicon_small)
+        try:
+            SetClassLongPtrW(hwnd, GCLP_HICONSM, hicon_small)
+        except Exception:
+            pass
 
 
 # ════════════════════════════════════════════════════════════════════
