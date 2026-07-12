@@ -260,15 +260,25 @@ def set_light_titlebar(window) -> None:
 
 
 def apply_icon(window) -> None:
-    """设置应用图标。
+    """设置应用图标（窗口装饰 + Windows 任务栏）。
 
     单一资产来源：logo.ico (含 256/128/64/48/32/16 多分辨率)
-    - 跨平台：Pillow 读 .ico 默认最大一帧（256×256），RGBA 合成白底后用 ImageTk.PhotoImage
-      喂给 wm iconphoto（macOS / Linux 唯一靠谱的方式；Windows 也兼容）
-    - Windows 任务栏额外用 wm iconbitmap 同份 .ico 兜底（iconphoto 在 Windows 任务栏
-      历史兼容性不如 iconbitmap）
+
+    三层覆盖，按强度递进：
+    1. iconphoto —— 跨平台标准做法（macOS / Linux 唯一靠谱；Windows 也兼容）
+    2. iconbitmap —— Tk 内置 Windows 任务栏兜底
+    3. Win32 API 直接 LoadImage + WM_SETICON + SetClassLongPtr
+       —— Tk 的 iconbitmap 在 Win10/11 上有已知坑：只设 ICON_SMALL
+       (16×16)，任务栏用的 ICON_BIG (32×32) 仍走 WNDCLASSEX，遇上
+       Windows icon cache 残留旧图标就会出怪事。这里用 Win32 API
+       强制把 16/32 两份 HICON 写到窗口 + 窗口类，绕开 Tk 与 icon cache。
+
+    Tk 在 Toplevel 第一次 WM_PAINT 之后会重新设置 WNDCLASSEX.HICON 为
+    Tk 默认图标（这是 Tk 维护 class 资源生命周期的副作用）—— 我们用
+    `after_idle` + 短延迟再设一次，确保 class icon 是我们的 octocat。
 
     Pillow 缺失时整段静默失败——窗口用 Tk 默认图标，不阻塞启动。
+    Win32 调用失败也不阻塞启动（iconbitmap / iconphoto 仍生效）。
     """
     logo_ico = BASE_DIR / "logo.ico"
     if not logo_ico.exists():
@@ -288,12 +298,96 @@ def apply_icon(window) -> None:
     except Exception as e:
         print(f"[apply_icon] iconphoto 失败: {e}", file=sys.stderr)
 
-    # ── Windows 任务栏：原生 .ico 更稳 ──
+    # ── Windows 任务栏：iconbitmap（标题栏 / grouped taskbar） + Win32 强制 ──
     if sys.platform == "win32":
         try:
             window.iconbitmap(str(logo_ico))
         except Exception as e:
             print(f"[apply_icon] iconbitmap 失败: {e}", file=sys.stderr)
+
+        try:
+            _apply_icon_win32(window, str(logo_ico))
+        except Exception as e:
+            print(f"[apply_icon] win32 强制失败: {e}", file=sys.stderr)
+
+        # Tk 在 Toplevel 首次 paint 后会用 SetClassLongPtr 把 class icon
+        # 改回 Tk 默认（这是 Tk 维护 class 资源生命周期的副作用）——
+        # 用 after() 链持续重设 5 秒，确保 WNDCLASSEX 最终锁定到 octocat。
+        # 失败静默：标题栏/任务栏分组模式已显示 octocat，不会更糟。
+        def _retry():
+            try:
+                _apply_icon_win32(window, str(logo_ico))
+            except Exception:
+                pass
+        try:
+            for ms in (50, 150, 300, 600, 1200, 2500, 5000):
+                window.after(ms, _retry)
+        except Exception:
+            pass
+
+
+def _apply_icon_win32(window, ico_path: str) -> None:
+    """Windows 任务栏图标强制覆盖：Win32 API 直接 LoadImage + WM_SETICON +
+    SetClassLongPtr，绕开 Tk 内置 iconbitmap 在 Win10/11 上的坑 + icon cache。
+
+    - LoadImageW(LR_LOADFROMFILE): 从 .ico 直接加载 16/32 两个 HICON
+    - WM_SETICON (ICON_SMALL/BIG): 设置窗口实例图标（标题栏 + grouped 任务栏）
+    - SetClassLongPtrW(GCLP_HICON/HICONSM): 设置窗口类图标
+      （ungrouped 任务栏用这个；任务栏按钮的『主图标』也走这个）
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+    LR_LOADFROMFILE = 0x00000010
+    IMAGE_ICON = 1
+    WM_SETICON = 0x0080
+    ICON_BIG = 1
+    ICON_SMALL = 0
+    GCLP_HICON = -14
+    GCLP_HICONSM = -34
+
+    try:
+        hwnd = wintypes.HWND(window.winfo_id())
+    except Exception:
+        return
+
+    # ── 配 ctypes 签名（64-bit 上不配会 crash 在 stdcall 栈错位） ──
+    LoadImageW = user32.LoadImageW
+    LoadImageW.argtypes = [
+        wintypes.HINSTANCE, wintypes.LPCWSTR, wintypes.UINT,
+        ctypes.c_int, ctypes.c_int, wintypes.UINT,
+    ]
+    LoadImageW.restype = wintypes.HANDLE
+
+    SendMessageW = user32.SendMessageW
+    SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT,
+                             wintypes.WPARAM, wintypes.LPARAM]
+    SendMessageW.restype = ctypes.c_ssize_t  # LRESULT = signed size_t, wintypes 没提供
+
+    SetClassLongPtrW = user32.SetClassLongPtrW
+    SetClassLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_ssize_t]
+    SetClassLongPtrW.restype = ctypes.c_ssize_t  # LONG_PTR = pointer-sized signed int
+
+    # ── 加载 16/32 两个 HICON ──
+    hicon_small = LoadImageW(
+        None, ico_path, IMAGE_ICON, 16, 16, LR_LOADFROMFILE,
+    )
+    hicon_big = LoadImageW(
+        None, ico_path, IMAGE_ICON, 32, 32, LR_LOADFROMFILE,
+    )
+
+    if hicon_small:
+        SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small)
+    if hicon_big:
+        SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)
+
+    # ── 改写 WNDCLASSEX，让任务栏主图标也跟上 ──
+    if hicon_big:
+        SetClassLongPtrW(hwnd, GCLP_HICON, hicon_big)
+    if hicon_small:
+        SetClassLongPtrW(hwnd, GCLP_HICONSM, hicon_small)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -354,6 +448,8 @@ class SetupDialog(ttkb.Toplevel):
         self.resizable(False, False)
         self.grab_set()  # 模态
 
+        # 应用图标（标题栏左上角 + 任务栏）—— 不调就用 Tk 默认羽毛笔
+        apply_icon(self)
         # Windows 下设置标题栏为浅色模式
         set_light_titlebar(self)
 
@@ -651,6 +747,7 @@ class GitMissingDialog(ttkb.Toplevel):
         self.geometry("500x360")
         self.resizable(False, False)
         self.grab_set()  # 模态
+        apply_icon(self)
         set_light_titlebar(self)
 
         container = ttkb.Frame(self, padding=30)
@@ -769,6 +866,7 @@ class FailuresDialog(ttkb.Toplevel):
         self.title(f"备份失败详情 - {len(failures)} 个")
         self.geometry("780x440")
         self.grab_set()
+        apply_icon(self)
         set_light_titlebar(self)
 
         container = ttkb.Frame(self, padding=15)
@@ -2356,6 +2454,8 @@ class BackupApp(ttkb.Window):
         dlg.title("系统定时任务参考（Windows / macOS / Linux）")
         dlg.geometry("820x640")
         dlg.transient(self)
+        apply_icon(dlg)  # 标题栏左上角图标
+        set_light_titlebar(dlg)
         self._cron_ref_dialog = dlg
 
         ttkb.Label(
@@ -2390,6 +2490,8 @@ class BackupApp(ttkb.Window):
         dlg.title("系统配置 — GitHub Backup Manager")
         dlg.geometry("1140x780")
         dlg.transient(self)
+        apply_icon(dlg)  # 标题栏左上角图标
+        set_light_titlebar(dlg)
         self._settings_dialog = dlg
 
         # 构建表单到对话框
