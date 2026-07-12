@@ -111,7 +111,7 @@ APScheduler 定时调度、Token 安全脱敏、嵌入式 IDE 风格文件浏览
 ### v1.2.0 SHA256
 
 ```
-（release 创建后由 GitHub Action 自动生成并展示）
+3f2a02581838535c84c502c338990f65d2d3ccfe80d6e9c6ad91495065989c97  GitHub-Backup-Manager-v1.2.0-windows-x86_64.zip
 ```
 
 ---
